@@ -7,7 +7,7 @@
 typedef NUMATH_MATRIX_TYPE element_t;
 
 #ifndef NUMATH_MATRIX_FORMAT
-#define NUMATH_MATRIX_FORMAT "%-8.2f "
+#define NUMATH_MATRIX_FORMAT "%-8.3f "
 #endif
 
 typedef struct SparseCell {
@@ -32,11 +32,13 @@ unsigned headers_len(SparseMatrix *matrix);
 
 void prep_access(SparseMatrix *matrix, unsigned *row, unsigned *col);
 
+SparseHeader *copyHeaders(SparseMatrix *matrix);
+
 SparseCell *createCell(unsigned index, element_t element);
 
 SparseMatrix *createMatrix(unsigned nrows, unsigned ncols);
 
-SparseMatrix *matrixFromArray(element_t **array, unsigned nrows, unsigned ncols);
+SparseMatrix *matrixFromArray(const element_t *array, unsigned nrows, unsigned ncols);
 
 SparseCell *copyCell(SparseCell *cell);
 
@@ -44,17 +46,17 @@ SparseMatrix *copyMatrix(SparseMatrix *matrix);
 
 element_t getElement(SparseMatrix *matrix, unsigned row, unsigned col);
 
-void setElement(SparseMatrix *matrix, unsigned row, unsigned col, element_t element);
+element_t setElement(SparseMatrix *matrix, unsigned row, unsigned col, element_t element);
 
-void removeElement(SparseMatrix *matrix, unsigned row, unsigned col);
+element_t removeElement(SparseMatrix *matrix, unsigned row, unsigned col);
 
-void addToElement(SparseMatrix *matrix, unsigned row, unsigned col, element_t element);
+element_t addToElement(SparseMatrix *matrix, unsigned row, unsigned col, element_t element);
 
-void subElement(SparseMatrix *matrix, unsigned row, unsigned col, element_t element);
+element_t subElement(SparseMatrix *matrix, unsigned row, unsigned col, element_t element);
 
-void mulElement(SparseMatrix *matrix, unsigned row, unsigned col, element_t element);
+element_t mulElement(SparseMatrix *matrix, unsigned row, unsigned col, element_t element);
 
-void divElement(SparseMatrix *matrix, unsigned row, unsigned col, element_t element);
+element_t divElement(SparseMatrix *matrix, unsigned row, unsigned col, element_t element);
 
 SparseMatrix *transpose(SparseMatrix *matrix);
 

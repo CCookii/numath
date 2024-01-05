@@ -16,16 +16,11 @@ inline void prep_access(SparseMatrix *const matrix, unsigned *row, unsigned *col
     if (col_headers(matrix)) NUMATH_SWAP(*row, *col, unsigned);
 }
 
-SparseMatrix *createMatrix(unsigned nrows, unsigned ncols) {
-    SparseMatrix *matrix = (SparseMatrix *) malloc(1 * sizeof(SparseMatrix));
-    if (!matrix) {
-        fprintf(stderr, "Couldn't allocate memory (Buy more RAM)\n");
-        exit(1);
-    }
-    matrix->nrows = nrows;
-    matrix->ncols = ncols;
-    matrix->headers = (SparseHeader *) calloc(headers_len(matrix), sizeof(SparseHeader));
-    return matrix;
+inline SparseHeader *copyHeaders(SparseMatrix *matrix) {
+    unsigned int len = headers_len(matrix);
+    SparseCell **copy = (SparseCell**) malloc(len * sizeof(SparseCell*));
+    memcpy(copy, matrix->headers, len * sizeof(SparseCell*));
+    return copy;
 }
 
 SparseCell *createCell(unsigned index, element_t element) {
@@ -39,6 +34,51 @@ SparseCell *createCell(unsigned index, element_t element) {
     return cell;
 }
 
+SparseMatrix *createMatrix(unsigned nrows, unsigned ncols) {
+    SparseMatrix *matrix = (SparseMatrix *) malloc(1 * sizeof(SparseMatrix));
+    if (!matrix) {
+        fprintf(stderr, "Couldn't allocate memory (Buy more RAM)\n");
+        exit(1);
+    }
+    matrix->nrows = nrows;
+    matrix->ncols = ncols;
+    matrix->headers = (SparseHeader *) calloc(headers_len(matrix), sizeof(SparseHeader));
+    return matrix;
+}
+
+SparseCell *copyCell(SparseCell *cell) {
+    if (!cell) return NULL;
+    SparseCell *copy = createCell(cell->index, cell->element);
+    copy->next = copyCell(cell->next);
+    return copy;
+}
+
+SparseMatrix *copyMatrix(SparseMatrix *const matrix) {
+    SparseMatrix *copy = createMatrix(matrix->nrows, matrix->ncols);
+    for (int i = 0; i < headers_len(matrix); ++i) {
+        copy->headers[i] = copyCell(matrix->headers[i]);
+    }
+    return copy;
+}
+
+SparseMatrix *matrixFromArray(const element_t *array, unsigned int nrows, unsigned int ncols) {
+    SparseMatrix *matrix = createMatrix(nrows, ncols);
+    if (col_headers(matrix)) prep_access(matrix, &nrows, &ncols);
+    for (int row = 0; row < nrows; ++row) {
+        SparseCell *cell = NULL;
+        for (int col = (int) ncols - 1; col >= 0; --col) {
+            element_t element = (col_headers(matrix)) ? array[col*nrows + row] : array[row*ncols + col];
+            if (element) {
+                SparseCell *newCell = createCell(col, element);
+                newCell->next = cell;
+                cell = newCell;
+            }
+        }
+        matrix->headers[row] = cell;
+    }
+    return matrix;
+}
+
 element_t getElement(SparseMatrix *const matrix, unsigned int row, unsigned int col) {
     assert(matrix && 0 <= row && row < matrix->nrows && 0 <= col && col < matrix->ncols);
     prep_access(matrix, &row, &col);
@@ -47,7 +87,7 @@ element_t getElement(SparseMatrix *const matrix, unsigned int row, unsigned int 
     return (cell && cell->index == col) ? cell->element : 0;
 }
 
-void setElement(SparseMatrix *const matrix, unsigned int row, unsigned int col, element_t element) {
+element_t setElement(SparseMatrix *const matrix, unsigned int row, unsigned int col, element_t element) {
     assert(matrix && 0 <= row && row < matrix->nrows && 0 <= col && col < matrix->ncols);
     prep_access(matrix, &row, &col);
     SparseCell *cell = matrix->headers[row];
@@ -57,23 +97,34 @@ void setElement(SparseMatrix *const matrix, unsigned int row, unsigned int col, 
         cell = cell->next;
     }
     int cellFound = (cell && cell->index == col);
-    if (cellFound && element) cell->element = element;
-    else {
+    element_t oldValue;
+    if (cellFound && element) {
+        oldValue = cell->element;
+        cell->element = element;
+    } else {
         SparseCell *newCell;
         if (!cellFound) {
+            oldValue = 0;
             newCell = createCell(col, element);
             newCell->next = cell;
         } else {
+            oldValue = cell->element;
             newCell = cell->next;
             freeCell(cell);
         }
         if (prev) prev->next = newCell;
         else matrix->headers[row] = newCell;
     }
+    return oldValue;
 }
 
-void addToElement(SparseMatrix *const matrix, unsigned int row, unsigned int col, element_t element) {
+element_t removeElement(SparseMatrix *const matrix, unsigned int row, unsigned int col) {
+    return setElement(matrix, row, col, 0);
+}
+
+element_t addToElement(SparseMatrix *const matrix, unsigned int row, unsigned int col, element_t element) {
     assert(matrix && 0 <= row && row < matrix->nrows && 0 <= col && col < matrix->ncols);
+    if (!element) return getElement(matrix, row, col);
     prep_access(matrix, &row, &col);
     SparseCell *cell = matrix->headers[row];
     SparseCell *prev = NULL;
@@ -82,28 +133,34 @@ void addToElement(SparseMatrix *const matrix, unsigned int row, unsigned int col
         cell = cell->next;
     }
     int cellFound = (cell && cell->index == col);
-    if (cellFound && cell->element + element) cell->element += element;
-    else {
+    if (cellFound && cell->element + element) {
+        cell->element += element;
+        return cell->element;
+    } else {
         SparseCell *newCell;
+        element_t newValue;
         if (!cellFound) {
             newCell = createCell(col, element);
             newCell->next = cell;
+            newValue = element;
         } else {
             newCell = cell->next;
             freeCell(cell);
+            newValue = 0;
         }
         if (prev) prev->next = newCell;
         else matrix->headers[row] = newCell;
+        return newValue;
     }
 }
 
-void subElement(SparseMatrix *const matrix, unsigned int row, unsigned int col, element_t element) {
-    addToElement(matrix, row, col, -element);
+element_t subElement(SparseMatrix *const matrix, unsigned int row, unsigned int col, element_t element) {
+    return addToElement(matrix, row, col, -element);
 }
 
-void mulElement(SparseMatrix *const matrix, unsigned int row, unsigned int col, element_t element) {
+element_t mulElement(SparseMatrix *const matrix, unsigned int row, unsigned int col, element_t element) {
     assert(matrix && 0 <= row && row < matrix->nrows && 0 <= col && col < matrix->ncols);
-    if (element == 1.0f) return;
+    if (element == 1.0f) return getElement(matrix, row, col);
     prep_access(matrix, &row, &col);
     SparseCell *cell = matrix->headers[row];
     SparseCell *prev = NULL;
@@ -112,19 +169,22 @@ void mulElement(SparseMatrix *const matrix, unsigned int row, unsigned int col, 
         cell = cell->next;
     }
     if (cell && cell->index == col) {
-        if (element) cell->element *= element;
-        else {
+        if (element) {
+            cell->element *= element;
+            return cell->element;
+        } else {
             freeCell(cell);
             if (prev) prev->next = cell->next;
             else matrix->headers[row] = cell->next;
         }
     }
+    return 0;
 }
 
-void divElement(SparseMatrix *const matrix, unsigned int row, unsigned int col, element_t element) {
+element_t divElement(SparseMatrix *const matrix, unsigned int row, unsigned int col, element_t element) {
     assert(matrix && 0 <= row && row < matrix->nrows && 0 <= col && col < matrix->ncols);
     assert(element);
-    if (element == 1.0f) return;
+    if (element == 1.0f) return getElement(matrix, row, col);
     prep_access(matrix, &row, &col);
     SparseCell *cell = matrix->headers[row];
     while (cell && cell->index < col) {
@@ -132,12 +192,98 @@ void divElement(SparseMatrix *const matrix, unsigned int row, unsigned int col, 
     }
     if (cell && cell->index == col) {
         cell->element /= element;
+        return cell->element;
     }
+    return 0;
 }
 
-void removeElement(SparseMatrix *const matrix, unsigned int row, unsigned int col) {
-    setElement(matrix, row, col, 0);
+SparseMatrix *transpose(SparseMatrix *matrix) {
+    if (!matrix) return NULL;
+    if (matrix->nrows != matrix->ncols) {
+        NUMATH_SWAP(matrix->ncols, matrix->nrows, unsigned);
+    } else {
+        SparseHeader *headers = (SparseHeader*) calloc(matrix->nrows, sizeof(SparseHeader));
+        for (int row = (int) matrix->nrows - 1; row >= 0; --row) {
+            SparseCell *cell = matrix->headers[row];
+            while (cell) {
+                SparseCell *next = cell->next;
+                cell->next = headers[cell->index];
+                headers[cell->index] = cell;
+                cell->index = row;
+                cell = next;
+            }
+        }
+        free(matrix->headers);
+        matrix->headers = headers;
+    }
+    return matrix;
 }
+
+#if 0
+SparseMatrix *decompLU(SparseMatrix *const matrix) {
+    assert(matrix->ncols == matrix->nrows);
+    SparseMatrix *LU = copyMatrix(matrix);
+    unsigned int n = LU->nrows;
+    for (int k = 0; k < n - 1; ++k) {
+        element_t diag = getElement(LU, k, k);
+        assert(diag);
+        for (int i = k + 1; i < n; ++i) {
+            element_t LUik = divElement(LU, i, k, diag);
+            if (!LUik) continue;
+            for (int j = k + 1; j < n; ++j) {
+                subElement(LU, i, j, getElement(LU, k, j) * LUik);
+            }
+        }
+//        printMatrix(LU);
+    }
+    return LU;
+}
+#else
+SparseMatrix *decompLU(SparseMatrix *const matrix) {
+    assert(matrix->ncols == matrix->nrows);
+    SparseMatrix *LU = copyMatrix(matrix);
+    unsigned int n = LU->nrows;
+    SparseCell **rows = copyHeaders(LU);
+    for (int k = 0; k < n - 1; ++k) {
+        SparseCell *topCell = rows[k];
+        assert(topCell && topCell->index == k);
+        element_t diag = topCell->element;
+        assert(diag);
+
+        for (int r = k + 1; r < n; ++r) {
+            topCell = rows[k]->next;
+            SparseCell *curCell = rows[r];
+            if (!curCell || curCell->index != k) continue;
+            curCell->element /= diag;
+            element_t factor = curCell->element;
+            SparseCell *prev = curCell;
+            curCell = curCell->next;
+            rows[r] = curCell;
+            while (topCell) {
+                while (curCell && curCell->index < topCell->index) {
+                    prev = curCell;
+                    curCell = curCell->next;
+                }
+                if (curCell && curCell->index == topCell->index) {
+                    curCell->element -= topCell->element * factor;
+                    if (!curCell->element) {
+                        prev->next = curCell->next;
+                        free(curCell);
+                        curCell = prev->next;
+                    }
+                } else {
+                    prev->next = createCell(topCell->index, -topCell->element * factor);
+                    prev->next->next = curCell;
+                    prev = prev->next;
+                }
+                topCell = topCell->next;
+            }
+        }
+    }
+    free(rows);
+    return LU;
+}
+#endif
 
 void printMatrix(SparseMatrix *const matrix) {
     if (!matrix) {
@@ -145,8 +291,7 @@ void printMatrix(SparseMatrix *const matrix) {
         return;
     }
     if (col_headers(matrix)) {
-        SparseCell **cols = (SparseCell **) malloc(matrix->ncols * sizeof(SparseCell *));
-        memcpy(cols, matrix->headers, matrix->ncols * sizeof(SparseCell *));
+        SparseCell **cols = copyHeaders(matrix);
         for (int row = 0; row < matrix->nrows; ++row) {
             printf("| ");
             for (int col = 0; col < matrix->ncols; ++col) {
@@ -181,12 +326,6 @@ void printMatrix(SparseMatrix *const matrix) {
     printf("\n");
 }
 
-SparseMatrix *transpose(SparseMatrix *matrix) {
-    if (!matrix) return NULL;
-    NUMATH_SWAP(matrix->ncols, matrix->nrows, unsigned);
-    return matrix;
-}
-
 void freeMatrix(SparseMatrix *matrix) {
     if (!matrix) return;
     unsigned len = headers_len(matrix);
@@ -203,61 +342,9 @@ void freeMatrix(SparseMatrix *matrix) {
 
 void freeCell(SparseCell *cell) { free(cell); }
 
-SparseMatrix *decompLU(SparseMatrix *const matrix) {
-    SparseMatrix *LU = copyMatrix(matrix);
-    unsigned int n = LU->nrows;
-    for (int k = 0; k < n - 1; ++k) {
-        element_t diag = getElement(LU, k, k);
-        assert(diag);
-        for (int row = k + 1; row < n; ++row) {
-            divElement(LU, row, k, diag);
-        }
-        for (int j = k + 1; j < n; ++j) {
-            element_t LUkj = getElement(LU, k, j);
-            for (int i = k + 1; i < n; ++i) {
-                subElement(LU, i, j, getElement(LU, i, k) * LUkj);
-            }
-        }
-        printMatrix(LU);
-    }
-    return LU;
-}
-
-SparseCell *copyCell(SparseCell *cell) {
-    if (!cell) return NULL;
-    SparseCell *copy = createCell(cell->index, cell->element);
-    copy->next = copyCell(cell->next);
-    return copy;
-}
-
-SparseMatrix *copyMatrix(SparseMatrix *const matrix) {
-    SparseMatrix *copy = createMatrix(matrix->nrows, matrix->ncols);
-    for (int i = 0; i < headers_len(matrix); ++i) {
-        copy->headers[i] = copyCell(matrix->headers[i]);
-    }
-    return copy;
-}
-
-SparseMatrix *matrixFromArray(element_t **array, unsigned int nrows, unsigned int ncols) {
-    SparseMatrix *matrix = createMatrix(nrows, ncols);
-    if (col_headers(matrix)) prep_access(matrix, &nrows, &ncols);
-    for (int head = 0; head < nrows; ++head) {
-        SparseCell *cell = NULL;
-        for (int index = ncols - 1; index >= 0; --index) {
-            element_t element = array[head][index];
-            if (element) {
-                SparseCell *newCell = createCell(index, element);
-                newCell->next = cell;
-                cell = newCell;
-            }
-        }
-        matrix->headers[head] = cell;
-    }
-    return matrix;
-}
-
-int main(void) {
-    SparseMatrix *matrix = createMatrix(6, 5);
+void testBasic() {
+    SparseMatrix *matrix;
+    matrix = createMatrix(6, 5);
     setElement(matrix, 1, 2, 15);
     setElement(matrix, 1, 1, 34);
     setElement(matrix, 1, 3, 20);
@@ -277,21 +364,37 @@ int main(void) {
     mulElement(matrix, 3, 4, 5.2);
     printMatrix(matrix);
     freeMatrix(matrix);
-    //////////////////////////////////////
-    element_t row1[] = {1, 2, 3, 4},
-                row2[] = {1, 4, 9, 16},
-                row3[] = {1, 8, 27, 64},
-                row4[] = {1, 16, 81, 256};
-    element_t *array[] = {
-            row1,
-            row2,
-            row3,
-            row4,
-    };
-    matrix = matrixFromArray(array, 4, 4);
+}
+
+void testLU() {
+    element_t array[] = {1, 2, 3, 4,
+                         0, 4, 9, 0,
+                         1, 8, 0, 0,
+                         0, 0, 81, 256};
+    SparseMatrix *matrix = matrixFromArray(array, 4, 4);
     printMatrix(matrix);
     SparseMatrix *LU = decompLU(matrix);
     printMatrix(LU);
     freeMatrix(LU);
     freeMatrix(matrix);
+}
+
+int main(void) {
+    testBasic();
+    testLU();
+    element_t array[] = {1, 2, 3,
+                         0, 4, 9,
+                         1, 8, 0,
+                         0, 0, 81};
+    SparseMatrix *matrix = matrixFromArray(array, 4, 3);
+    printMatrix(matrix);
+    printMatrix(transpose(matrix));
+    freeMatrix(matrix);
+    element_t array2[] = {1, 2, 3, 4,
+                          0, 4, 9, 0,
+                          1, 8, 0, 0,
+                          0, 0, 81, 256};
+    matrix = matrixFromArray(array2, 4, 4);
+    printMatrix(matrix);
+    printMatrix(transpose(matrix));
 }
