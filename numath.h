@@ -1,19 +1,22 @@
 #ifndef NUMATH_NUMATH_H
 #define NUMATH_NUMATH_H
 
-#ifndef NUMATH_TYPE
-#define NUMATH_TYPE int
+#ifndef NUMATH_MATRIX_TYPE
+#define NUMATH_MATRIX_TYPE double
 #endif
-typedef NUMATH_TYPE element_t;
+typedef NUMATH_MATRIX_TYPE element_t;
+
+#ifndef NUMATH_MATRIX_FORMAT
+#define NUMATH_MATRIX_FORMAT "%-8.2f "
+#endif
 
 typedef struct SparseCell {
-    unsigned row;
-    unsigned col;
-    struct SparseCell* next;
+    unsigned index;
+    struct SparseCell *next;
     element_t element;
 } SparseCell;
 
-typedef SparseCell* SparseHeader;
+typedef SparseCell *SparseHeader;
 
 typedef struct SparseMatrix {
     unsigned nrows;
@@ -23,22 +26,44 @@ typedef struct SparseMatrix {
 
 #define NUMATH_SWAP(a, b, T) { T t = a; a = b; b = t; } while (0)
 
-#define COL_HEADERS(matrix) (matrix->ncols < matrix->nrows)
+int col_headers(SparseMatrix *matrix);
 
-#define PREP_ACCESS(matrix, row, col) if (COL_HEADERS(matrix)) NUMATH_SWAP(row, col, unsigned)
+unsigned headers_len(SparseMatrix *matrix);
+
+void prep_access(SparseMatrix *matrix, unsigned *row, unsigned *col);
+
+SparseCell *createCell(unsigned index, element_t element);
 
 SparseMatrix *createMatrix(unsigned nrows, unsigned ncols);
 
-SparseCell *createCell(unsigned int row, unsigned int col, element_t element);
+SparseMatrix *matrixFromArray(element_t **array, unsigned nrows, unsigned ncols);
 
-element_t get(SparseMatrix *matrix, unsigned row, unsigned col);
+SparseCell *copyCell(SparseCell *cell);
 
-void add(SparseMatrix *matrix, unsigned row, unsigned col, element_t element);
+SparseMatrix *copyMatrix(SparseMatrix *matrix);
+
+element_t getElement(SparseMatrix *matrix, unsigned row, unsigned col);
+
+void setElement(SparseMatrix *matrix, unsigned row, unsigned col, element_t element);
+
+void removeElement(SparseMatrix *matrix, unsigned row, unsigned col);
+
+void addToElement(SparseMatrix *matrix, unsigned row, unsigned col, element_t element);
+
+void subElement(SparseMatrix *matrix, unsigned row, unsigned col, element_t element);
+
+void mulElement(SparseMatrix *matrix, unsigned row, unsigned col, element_t element);
+
+void divElement(SparseMatrix *matrix, unsigned row, unsigned col, element_t element);
+
+SparseMatrix *transpose(SparseMatrix *matrix);
+
+SparseMatrix *decompLU(SparseMatrix *matrix);
 
 void printMatrix(SparseMatrix *matrix);
 
-void freeMatrix(SparseMatrix *matrix);
-
 void freeCell(SparseCell *cell);
+
+void freeMatrix(SparseMatrix *matrix);
 
 #endif //NUMATH_NUMATH_H
