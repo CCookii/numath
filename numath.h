@@ -24,7 +24,7 @@ typedef struct SparseMatrix {
     SparseHeader *headers;
 } SparseMatrix;
 
-#define NUMATH_SWAP(a, b, T) { T t = a; a = b; b = t; } while (0)
+#define NUMATH_SWAP(a, b, T) do { T t = a; a = b; b = t; } while (0)
 
 int col_headers(SparseMatrix *matrix);
 
@@ -34,7 +34,7 @@ void prep_access(SparseMatrix *matrix, unsigned *row, unsigned *col);
 
 SparseHeader *copyHeaders(SparseMatrix *matrix);
 
-SparseCell *createCell(unsigned index, element_t element);
+SparseCell *createCell(unsigned index, element_t element, SparseCell *next);
 
 SparseMatrix *createMatrix(unsigned nrows, unsigned ncols);
 
@@ -43,6 +43,10 @@ SparseMatrix *matrixFromArray(const element_t *array, unsigned nrows, unsigned n
 SparseCell *copyCell(SparseCell *cell);
 
 SparseMatrix *copyMatrix(SparseMatrix *matrix);
+
+SparseMatrix *switch_header_position(SparseMatrix *matrix, int switched);
+
+SparseMatrix *transpose(SparseMatrix *matrix);
 
 element_t getElement(SparseMatrix *matrix, unsigned row, unsigned col);
 
@@ -58,7 +62,9 @@ element_t mulElement(SparseMatrix *matrix, unsigned row, unsigned col, element_t
 
 element_t divElement(SparseMatrix *matrix, unsigned row, unsigned col, element_t element);
 
-SparseMatrix *transpose(SparseMatrix *matrix);
+element_t mulHeaders(SparseCell *one, SparseCell *other);
+
+SparseMatrix *mulMatrix(SparseMatrix *one, SparseMatrix *other);
 
 SparseMatrix *decompLU(SparseMatrix *matrix);
 
